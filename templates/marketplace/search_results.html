@@ -4,21 +4,61 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h1 class="mb-4">Результаты поиска для: "{{ query }}"</h1>
+    <div class="row mb-4">
+        <div class="col-md-8 mx-auto">
+            <form action="{% url 'search_results' %}" method="get" class="search-form">
+                <div class="input-group">
+                    <input type="text"
+                           class="form-control form-control-lg"
+                           name="q"
+                           value="{{ query }}"
+                           placeholder="Поиск товаров..."
+                           autocomplete="off">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="bi bi-search"></i> Поиск
+                    </button>
+                </div>
+            </form>
+            <div class="text-muted mt-2">
+                Найдено товаров: {{ results_count }}
+            </div>
+        </div>
+    </div>
 
     {% if products %}
         <div class="row row-cols-1 row-cols-md-3 g-4">
             {% for product in products %}
                 <div class="col">
-                    <div class="card h-100 shadow-sm">
-                        <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: contain;">
+                    <div class="card h-100 shadow-sm product-card">
+                        <div class="position-relative">
+                            <img src="{{ product.image.url }}"
+                                 class="card-img-top"
+                                 alt="{{ product.name }}"
+                                 style="height: 200px; object-fit: contain;">
+                            {% if product.rating %}
+                                <span class="position-absolute top-0 start-0 m-2 badge bg-warning text-dark">
+                                    ★ {{ product.rating|floatformat:1 }}
+                                </span>
+                            {% endif %}
+                        </div>
                         <div class="card-body">
                             <h5 class="card-title">{{ product.name }}</h5>
                             <p class="card-text text-muted">{{ product.manufacturer }}</p>
-                            <p class="card-text">{{ product.description|truncatewords:15 }}</p>
+                            <p class="card-text text-truncate">{{ product.description }}</p>
+                        </div>
+                        <div class="card-footer bg-transparent border-top-0">
                             <div class="d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0 text-primary">{{ product.price }} ₽</h5>
-                                <a href="{% url 'product_detail' product.id %}" class="btn btn-outline-primary">Подробнее</a>
+                                <div>
+                                    <a href="{% url 'product_detail' product.id %}"
+                                       class="btn btn-sm btn-outline-primary">
+                                        Подробнее
+                                    </a>
+                                    <button class="btn btn-sm btn-success add-to-cart"
+                                            data-product-id="{{ product.id }}">
+                                        <i class="bi bi-cart-plus"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -26,10 +66,48 @@
             {% endfor %}
         </div>
     {% else %}
-        <div class="alert alert-info">
-            По запросу "{{ query }}" ничего не найдено.
-            <a href="{% url 'home' %}" class="alert-link">Вернуться на главную</a>
+        <div class="text-center py-5">
+            <div class="alert alert-info">
+                <h4>По запросу "{{ query }}" ничего не найдено</h4>
+                <p class="mb-0">Попробуйте изменить формулировку или <a href="{% url 'home' %}">вернитесь на главную</a></p>
+            </div>
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block javascript %}
+<script>
+// Автодополнение поиска
+$(document).ready(function() {
+    const searchInput = $('input[name="q"]');
+    const searchForm = $('.search-form');
+
+    // AJAX автодополнение
+    searchInput.on('input', debounce(function() {
+        const query = $(this).val().trim();
+        if (query.length < 2) return;
+
+        $.get('{% url "autocomplete" %}', { q: query }, function(data) {
+            // Обработка результатов автодополнения
+            console.log(data);
+        });
+    }, 300));
+
+    // Отправка формы при выборе из автодополнения
+    searchForm.on('submit', function(e) {
+        if (!searchInput.val().trim()) {
+            e.preventDefault();
+        }
+    });
+});
+
+function debounce(func, wait) {
+    let timeout;
+    return function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(func, wait);
+    };
+}
+</script>
 {% endblock %}

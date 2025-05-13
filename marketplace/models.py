@@ -1,4 +1,4 @@
-from django.db.models import Avg, Sum, Count
+from django.db.models import Avg, Sum, Count, Q
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models import F
@@ -40,6 +40,13 @@ class Product(models.Model):
             self.rating = reviews.aggregate(Avg('rating'))['rating__avg']
             self.save()
 
+    @classmethod
+    def search(cls, query):
+        return cls.objects.filter(
+            Q(name__icontains=query) |
+            Q(manufacturer__icontains=query) |
+            Q(description__icontains=query)
+        ).order_by('-rating')
 
 class Cart(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

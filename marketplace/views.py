@@ -642,40 +642,86 @@ from django.http import JsonResponse
 from django.db.models import Q
 
 
+from django.db.models.functions import Greatest
+from django.contrib.postgres.search import TrigramSimilarity
+
 def autocomplete(request):
     query = request.GET.get('q', '').strip()
     if not query or len(query) < 2:
         return JsonResponse([], safe=False)
 
-    products = Product.objects.filter(
-        Q(name__icontains=query) |
-        Q(manufacturer__icontains=query)
-    )[:5]
+    try:
+        products = Product.objects.annotate(
+            similarity=Greatest(
+                TrigramSimilarity('name', query),
+                TrigramSimilarity('manufacturer', query)
+            )
+        ).filter(
+            Q(similarity__gt=0.1) |
+            Q(name__icontains=query) |
+            Q(manufacturer__icontains=query)
+        ).order_by('-similarity', '-rating')[:10]
+    except:
+        products = Product.objects.filter(
+            Q(name__icontains=query) |
+            Q(manufacturer__icontains=query)
+        )[:10]
 
     suggestions = [{
         'name': p.name,
+        'manufacturer': p.manufacturer,
+        'price': str(p.price),
+        'image': p.image.url if p.image else '',
         'url': p.get_absolute_url(),
-        'price': str(p.price)
+        'rating': p.rating
     } for p in products]
 
     return JsonResponse(suggestions, safe=False)
 
 
-# Для результатов поиска
+from django.db.models import Q
+from django.contrib.postgres.search import TrigramSimilarity
+
+
 def search_results(request):
     query = request.GET.get('q', '').strip()
     if not query:
         return redirect('home')
 
-    products = Product.objects.filter(
-        models.Q(name__icontains=query) |
-        models.Q(description__icontains=query) |
-        models.Q(manufacturer__icontains=query)
-    ).select_related('seller').order_by('-rating')
+    # Базовый запрос с простым поиском
+    products = Product.objects.all()
+
+    # Используем разные методы в зависимости от запроса
+    if len(query) < 3:
+        # Простой поиск для коротких запросов
+        products = products.filter(
+            Q(name__icontains=query) |
+            Q(manufacturer__icontains=query)
+        )
+    else:
+        try:
+            # Пытаемся использовать полнотекстовый поиск PostgreSQL
+            products = Product.search(query)
+        except:
+            # Fallback на триграммный поиск или обычный icontains
+            products = products.annotate(
+                similarity=TrigramSimilarity('name', query) +
+                           TrigramSimilarity('manufacturer', query)
+            ).filter(
+                Q(similarity__gt=0.2) |
+                Q(name__icontains=query) |
+                Q(manufacturer__icontains=query)
+            ).order_by('-similarity', '-rating')
+
+    # Дополнительная фильтрация и аннотации
+    products = products.select_related('seller').annotate(
+        review_count=Count('reviews')
+    ).order_by('-rating')
 
     return render(request, 'marketplace/search_results.html', {
         'products': products,
-        'query': query
+        'query': query,
+        'results_count': products.count()
     })
 
 
